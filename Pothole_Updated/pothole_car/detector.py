@@ -67,7 +67,10 @@ def detect_pothole(frame):
         None,
         {input_name: img}
     )
-
+    
+    print("Output shape:", outputs[0].shape)
+    print("Sample output:", outputs[0][0][:5])
+    
     predictions = outputs[0][0]
 
     boxes = []
