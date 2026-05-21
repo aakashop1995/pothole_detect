@@ -16,7 +16,7 @@ FRAME_WIDTH = 320
 FRAME_HEIGHT = 240
 
 # --------------------------------
-# Picamera2 setup
+# Camera setup
 # --------------------------------
 picam2 = Picamera2()
 
@@ -25,31 +25,26 @@ config = picam2.create_preview_configuration(
 )
 
 picam2.configure(config)
-
 picam2.start()
 
 print("Camera started")
 
 # --------------------------------
-# MongoDB Atlas setup
+# MongoDB setup
 # --------------------------------
 db_ready = init_database()
 
 if not db_ready:
-    print("⚠ Warning: Database initialization failed. Continuing without database logging.")
+    print("⚠ Warning: Database not available")
 
 # --------------------------------
 # Shared frame
 # --------------------------------
 latest_frame = None
-
 lock = threading.Lock()
 
 # --------------------------------
-# Camera capture thread
-# --------------------------------
-# --------------------------------
-# Camera capture thread
+# Camera thread
 # --------------------------------
 def capture_loop():
 
@@ -66,126 +61,87 @@ def capture_loop():
     prev_time = time.time()
 
     potholes = []
+    last_state = None   # IMPORTANT FIX
+
+    lat, lon = None, None
 
     while True:
 
         try:
 
-            # --------------------------------
+            # -----------------------------
             # Capture frame
-            # --------------------------------
+            # -----------------------------
             frame = picam2.capture_array()
 
-            # RGB -> BGR
-            frame = cv2.cvtColor(
-                frame,
-                cv2.COLOR_RGB2BGR
-            )
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
-            # Resize
-            frame = cv2.resize(
-                frame,
-                (FRAME_WIDTH, FRAME_HEIGHT)
-            )
+            frame = cv2.resize(frame, (FRAME_WIDTH, FRAME_HEIGHT))
 
-            # --------------------------------
-            # Run detection every 3 frames
-            # --------------------------------
+            # -----------------------------
+            # Detection every 3 frames
+            # -----------------------------
             frame_counter += 1
 
             if frame_counter % 3 == 0:
-
                 potholes = detect_pothole(frame)
 
             detected = len(potholes) > 0
 
-            # --------------------------------
-            # Navigation Logic
-            # --------------------------------
+            # -----------------------------
+            # Navigation
+            # -----------------------------
             if detected:
 
-                # Nearest pothole
-                nearest = max(
-                    potholes,
-                    key=lambda p: p[5]
-                )
-
+                nearest = max(potholes, key=lambda p: p[5])
                 x, y, w, h, cx, cy = nearest
 
-                command = decide_action(
-                    True,
-                    cx,
-                    cy
-                )
+                command = decide_action(True, cx, cy)
 
             else:
 
-                command = decide_action(
-                    False,
-                    0,
-                    0
-                )
+                command = decide_action(False, 0, 0)
 
-            # --------------------------------
-            # Send to Arduino
-            # --------------------------------
             send_command(command)
 
-            # --------------------------------
-            # Draw potholes
-            # --------------------------------
-            for pothole in potholes:
+            # -----------------------------
+            # Draw detections
+            # -----------------------------
+            for p in potholes:
 
-                x, y, w, h, cx, cy = pothole
+                x, y, w, h, cx, cy = p
 
-                # Bounding box
-                cv2.rectangle(
-                    frame,
-                    (x, y),
-                    (x + w, y + h),
-                    (0, 0, 255),
-                    2
-                )
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
+                cv2.circle(frame, (cx, cy), 5, (255, 0, 0), -1)
 
-                # Center point
-                cv2.circle(
-                    frame,
-                    (cx, cy),
-                    5,
-                    (255, 0, 0),
-                    -1
-                )
+            # -----------------------------
+            # State change print (FIXED)
+            # -----------------------------
+            if detected != last_state:
 
-            # --------------------------------
-            # GPS + Database cooldown
-            # --------------------------------
+                if detected:
+                    print("Pothole detected")
+                else:
+                    print("No pothole")
+
+                last_state = detected
+
             current_time = time.time()
 
-            if not detected:
+            # -----------------------------
+            # GPS + DB only if detected
+            # -----------------------------
+            if detected:
 
-                status_text = "POTHOLE NOT DETECTED"
-                status_color = (0, 0, 255)
-            
-            else:
-            
-                status_text = "POTHOLE DETECTED"
-                status_color = (0, 255, 0)
-
-                # GPS every 5 sec
                 if current_time - last_gps_time > gps_interval:
 
                     lat, lon = get_gps_location()
-
                     print("GPS:", lat, lon)
-
                     last_gps_time = current_time
 
-                # Save every 10 sec
                 if (
                     db_ready
-                    and
-                    current_time - last_save_time
-                    > save_interval
+                    and current_time - last_save_time > save_interval
                 ):
 
                     success, doc_id = save_pothole_detection(
@@ -196,65 +152,46 @@ def capture_loop():
                     )
 
                     if success:
-
                         print("Saved to MongoDB")
 
                     last_save_time = current_time
 
-            # --------------------------------
-            # FPS Calculation
-            # --------------------------------
+            # -----------------------------
+            # FPS
+            # -----------------------------
             fps = 1 / (current_time - prev_time)
-
             prev_time = current_time
 
-            # --------------------------------
-            # Display FPS
-            # --------------------------------
-            cv2.putText(
-                frame,
-                f"FPS: {int(fps)}",
-                (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 255, 0),
-                2
-            )
+            cv2.putText(frame, f"FPS: {int(fps)}", (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
-            # --------------------------------
-            # Display command
-            # --------------------------------
-            cv2.putText(
-                frame,
-                f"CMD: {command}",
-                (10, 60),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (255, 255, 0),
-                2
-            )
+            cv2.putText(frame, f"CMD: {command}", (10, 60),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
 
-            # --------------------------------
-            # Update shared frame
-            # --------------------------------
+            cv2.putText(frame,
+                        "POTHOLE" if detected else "CLEAR",
+                        (10, 90),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        (0, 0, 255) if detected else (0, 255, 0),
+                        2)
+
+            # -----------------------------
+            # Update stream
+            # -----------------------------
             with lock:
-
                 latest_frame = frame.copy()
 
             time.sleep(0.01)
 
         except Exception as e:
-
             print("Camera Error:", e)
 
-# Start capture thread
-threading.Thread(
-    target=capture_loop,
-    daemon=True
-).start()
+# Start thread
+threading.Thread(target=capture_loop, daemon=True).start()
 
 # --------------------------------
-# MJPEG Stream Generator
+# MJPEG stream
 # --------------------------------
 def generate():
 
@@ -263,38 +200,25 @@ def generate():
     while True:
 
         with lock:
-
-            frame = (
-                None
-                if latest_frame is None
-                else latest_frame.copy()
-            )
+            frame = None if latest_frame is None else latest_frame.copy()
 
         if frame is None:
-
             continue
 
-        success, buffer = cv2.imencode(
-            '.jpg',
-            frame,
-            [int(cv2.IMWRITE_JPEG_QUALITY), 80]
-        )
+        success, buffer = cv2.imencode('.jpg', frame,
+                                        [int(cv2.IMWRITE_JPEG_QUALITY), 80])
 
         if not success:
-
             continue
 
-        yield (
-            b'--frame\r\n'
-            b'Content-Type: image/jpeg\r\n\r\n' +
-            buffer.tobytes() +
-            b'\r\n'
-        )
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' +
+               buffer.tobytes() + b'\r\n')
 
         time.sleep(0.03)
 
 # --------------------------------
-# Flask Routes
+# Routes
 # --------------------------------
 @app.route('/')
 
@@ -302,15 +226,10 @@ def home():
 
     return """
     <html>
-
         <body>
-
             <h2>Pothole Detection Car</h2>
-
             <img src="/video" width="640"/>
-
         </body>
-
     </html>
     """
 
@@ -318,25 +237,22 @@ def home():
 
 def video():
 
-    return Response(
-        generate(),
-        mimetype='multipart/x-mixed-replace; boundary=frame'
-    )
+    return Response(generate(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/stats')
 
 def stats():
-    """Display detection statistics"""
-    
+
     stats_data = get_detection_stats()
-    
+
     return {
-        'total_detections': stats_data.get('total_detections', 0),
-        'last_updated': str(stats_data.get('last_updated', 'N/A'))
+        "total_detections": stats_data.get("total_detections", 0),
+        "last_updated": str(stats_data.get("last_updated", "N/A"))
     }
 
 # --------------------------------
-# Run Flask
+# Run server
 # --------------------------------
 if __name__ == '__main__':
 
@@ -348,13 +264,12 @@ if __name__ == '__main__':
             debug=False,
             use_reloader=False
         )
-    
+
     except KeyboardInterrupt:
-        print("\n\nShutting down...")
+        print("\nShutting down...")
         close_database()
         picam2.stop()
-        print("✓ Cleanup complete")
-    
+
     finally:
         close_database()
         picam2.stop()
