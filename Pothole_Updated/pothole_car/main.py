@@ -161,7 +161,15 @@ def capture_loop():
             # --------------------------------
             current_time = time.time()
 
-            if detected:
+            if not detected:
+
+                status_text = "POTHOLE NOT DETECTED"
+                status_color = (0, 0, 255)
+            
+            else:
+            
+                status_text = "POTHOLE DETECTED"
+                status_color = (0, 255, 0)
 
                 # GPS every 5 sec
                 if current_time - last_gps_time > gps_interval:
