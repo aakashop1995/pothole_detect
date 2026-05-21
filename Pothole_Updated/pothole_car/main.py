@@ -30,7 +30,7 @@ picam2.start()
 print("Camera started")
 
 # --------------------------------
-# MongoDB setup
+# Database setup
 # --------------------------------
 db_ready = init_database()
 
@@ -50,6 +50,10 @@ def capture_loop():
 
     global latest_frame
 
+    # FPS CAP SETTINGS
+    target_fps = 30
+    frame_time = 1.0 / target_fps
+
     frame_counter = 0
 
     last_gps_time = 0
@@ -61,26 +65,27 @@ def capture_loop():
     prev_time = time.time()
 
     potholes = []
-    last_state = None   # IMPORTANT FIX
-
+    last_state = None
     lat, lon = None, None
 
     while True:
 
+        loop_start = time.time()
+
         try:
 
-            # -----------------------------
+            # --------------------------------
             # Capture frame
-            # -----------------------------
+            # --------------------------------
             frame = picam2.capture_array()
 
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
             frame = cv2.resize(frame, (FRAME_WIDTH, FRAME_HEIGHT))
 
-            # -----------------------------
+            # --------------------------------
             # Detection every 3 frames
-            # -----------------------------
+            # --------------------------------
             frame_counter += 1
 
             if frame_counter % 3 == 0:
@@ -88,9 +93,9 @@ def capture_loop():
 
             detected = len(potholes) > 0
 
-            # -----------------------------
+            # --------------------------------
             # Navigation
-            # -----------------------------
+            # --------------------------------
             if detected:
 
                 nearest = max(potholes, key=lambda p: p[5])
@@ -104,9 +109,9 @@ def capture_loop():
 
             send_command(command)
 
-            # -----------------------------
+            # --------------------------------
             # Draw detections
-            # -----------------------------
+            # --------------------------------
             for p in potholes:
 
                 x, y, w, h, cx, cy = p
@@ -114,9 +119,9 @@ def capture_loop():
                 cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 2)
                 cv2.circle(frame, (cx, cy), 5, (255, 0, 0), -1)
 
-            # -----------------------------
-            # State change print (FIXED)
-            # -----------------------------
+            # --------------------------------
+            # State change print
+            # --------------------------------
             if detected != last_state:
 
                 if detected:
@@ -128,9 +133,9 @@ def capture_loop():
 
             current_time = time.time()
 
-            # -----------------------------
-            # GPS + DB only if detected
-            # -----------------------------
+            # --------------------------------
+            # GPS + DB (only when detected)
+            # --------------------------------
             if detected:
 
                 if current_time - last_gps_time > gps_interval:
@@ -156,9 +161,9 @@ def capture_loop():
 
                     last_save_time = current_time
 
-            # -----------------------------
-            # FPS
-            # -----------------------------
+            # --------------------------------
+            # FPS calculation
+            # --------------------------------
             fps = 1 / (current_time - prev_time)
             prev_time = current_time
 
@@ -176,13 +181,19 @@ def capture_loop():
                         (0, 0, 255) if detected else (0, 255, 0),
                         2)
 
-            # -----------------------------
-            # Update stream
-            # -----------------------------
+            # --------------------------------
+            # Update shared frame
+            # --------------------------------
             with lock:
                 latest_frame = frame.copy()
 
-            time.sleep(0.01)
+            # --------------------------------
+            # FPS CAP (30 FPS)
+            # --------------------------------
+            elapsed = time.time() - loop_start
+
+            if elapsed < frame_time:
+                time.sleep(frame_time - elapsed)
 
         except Exception as e:
             print("Camera Error:", e)
@@ -191,7 +202,7 @@ def capture_loop():
 threading.Thread(target=capture_loop, daemon=True).start()
 
 # --------------------------------
-# MJPEG stream
+# MJPEG Stream
 # --------------------------------
 def generate():
 
@@ -218,7 +229,7 @@ def generate():
         time.sleep(0.03)
 
 # --------------------------------
-# Routes
+# Flask routes
 # --------------------------------
 @app.route('/')
 
