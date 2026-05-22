@@ -35,96 +35,59 @@ input_name = session.get_inputs()[0].name
 # Detect pothole
 # --------------------------------
 def detect_pothole(frame):
+    try:
+        # -------------------------
+        # Preprocess
+        # -------------------------
+        img = cv2.resize(frame, (MODEL_SIZE, MODEL_SIZE))
+        img = img.astype(np.float32) / 255.0
+        img = np.transpose(img, (2, 0, 1))
+        img = np.expand_dims(img, axis=0)
 
-    # --------------------------------
-    # Resize
-    # --------------------------------
-    img = cv2.resize(
-        frame,
-        (MODEL_SIZE, MODEL_SIZE)
-    )
+        # -------------------------
+        # Inference
+        # -------------------------
+        outputs = session.run(None, {input_name: img})
+        predictions = outputs[0]
 
-    # --------------------------------
-    # Normalize
-    # --------------------------------
-    img = img.astype(np.float32) / 255.0
+        # -------------------------
+        # Shape fix (safe)
+        # -------------------------
+        predictions = np.squeeze(predictions)
 
-    # HWC -> CHW
-    img = np.transpose(img, (2, 0, 1))
+        # Ensure 2D shape: (N, 5+)
+        if len(predictions.shape) == 1:
+            return False, 0, 0
 
-    # Batch dimension
-    img = np.expand_dims(img, axis=0)
+        # -------------------------
+        # Parse detections
+        # -------------------------
+        for detection in predictions:
 
-    # --------------------------------
-    # Inference
-    # --------------------------------
-    outputs = session.run(
-        None,
-        {input_name: img}
-    )
+            # Must have at least 5 values
+            if len(detection) < 5:
+                continue
 
-    predictions = outputs[0]
+            x_center, y_center, width, height, confidence = detection[:5]
 
-    # --------------------------------
-    # FIX SHAPE
-    # (1, 5, 2100) -> (2100, 5)
-    # --------------------------------
-    if len(predictions.shape) == 3:
+            if confidence < CONF_THRESHOLD:
+                continue
 
-        predictions = np.transpose(
-            predictions,
-            (0, 2, 1)
-        )
+            # Convert to frame scale
+            x1 = int((x_center - width / 2) * FRAME_WIDTH / MODEL_SIZE)
+            y1 = int((y_center - height / 2) * FRAME_HEIGHT / MODEL_SIZE)
+            x2 = int((x_center + width / 2) * FRAME_WIDTH / MODEL_SIZE)
+            y2 = int((y_center + height / 2) * FRAME_HEIGHT / MODEL_SIZE)
 
-        predictions = predictions[0]
+            center_x = (x1 + x2) // 2
+            center_y = (y1 + y2) // 2
 
-    # --------------------------------
-    # Parse detections
-    # --------------------------------
-    for detection in predictions[::2]:
+            # Filter bottom-half detections
+            if center_y > FRAME_HEIGHT // 2:
+                return True, center_x, center_y
 
-        confidence = float(detection[4])
+        return False, 0, 0
 
-        if confidence < CONF_THRESHOLD:
-            continue
-
-        x_center = detection[0]
-        y_center = detection[1]
-
-        width = detection[2]
-        height = detection[3]
-
-        # Convert coordinates
-        x1 = int(
-            (x_center - width / 2)
-            * FRAME_WIDTH
-            / MODEL_SIZE
-        )
-
-        y1 = int(
-            (y_center - height / 2)
-            * FRAME_HEIGHT
-            / MODEL_SIZE
-        )
-
-        x2 = int(
-            (x_center + width / 2)
-            * FRAME_WIDTH
-            / MODEL_SIZE
-        )
-
-        y2 = int(
-            (y_center + height / 2)
-            * FRAME_HEIGHT
-            / MODEL_SIZE
-        )
-
-        center_x = (x1 + x2) // 2
-        center_y = (y1 + y2) // 2
-
-        # Only near potholes
-        if center_y > FRAME_HEIGHT // 2:
-
-            return True, center_x, center_y
-
-    return False, 0, 0
+    except Exception as e:
+        print("Detection error:", e)
+        return False, 0, 0
