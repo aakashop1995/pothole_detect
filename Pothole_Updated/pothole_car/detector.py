@@ -7,8 +7,28 @@ import onnxruntime as ort
 # --------------------------------
 MODEL_SIZE = 320
 
-CONF_THRESHOLD = 0.3
+CONF_THRESHOLD = 0.25
 NMS_THRESHOLD = 0.4
+
+# --------------------------------
+# LETTERBOX (prevents zoom + distortion)
+# --------------------------------
+def letterbox(img, size=320):
+    h, w = img.shape[:2]
+
+    scale = min(size / w, size / h)
+    nw, nh = int(w * scale), int(h * scale)
+
+    resized = cv2.resize(img, (nw, nh))
+
+    canvas = np.full((size, size, 3), 114, dtype=np.uint8)
+
+    pad_x = (size - nw) // 2
+    pad_y = (size - nh) // 2
+
+    canvas[pad_y:pad_y + nh, pad_x:pad_x + nw] = resized
+
+    return canvas, scale, pad_x, pad_y
 
 # --------------------------------
 # ONNX Runtime Optimization
@@ -25,7 +45,7 @@ options.graph_optimization_level = (
 # Load ONNX model
 # --------------------------------
 session = ort.InferenceSession(
-    "/home/jayesh/Pothole_detection/model/best.onnx",
+    r"C:\Users\bhupe\Downloads\Model\best.onnx",
     sess_options=options,
     providers=['CPUExecutionProvider']
 )
@@ -39,10 +59,12 @@ def detect_pothole(frame):
 
     original_h, original_w = frame.shape[:2]
 
-    # Resize frame
-    img = cv2.resize(
+    # --------------------------------
+    # Preprocess with letterbox
+    # --------------------------------
+    img, scale, pad_x, pad_y = letterbox(
         frame,
-        (MODEL_SIZE, MODEL_SIZE)
+        MODEL_SIZE
     )
 
     # BGR -> RGB
@@ -67,52 +89,80 @@ def detect_pothole(frame):
         None,
         {input_name: img}
     )
-    
-    print("Output shape:", outputs[0].shape)
-    print("Sample output:", outputs[0][0][:5])
-    
-    predictions = outputs[0][0]
+
+    predictions = outputs[0]
+
+    # --------------------------------
+    # FIX SHAPE
+    # (1, 5, 2100) -> (2100, 5)
+    # --------------------------------
+    if len(predictions.shape) == 3:
+
+        predictions = np.transpose(
+            predictions,
+            (0, 2, 1)
+        )
+
+        predictions = predictions[0]
 
     boxes = []
     confidences = []
 
     # --------------------------------
-    # Parse detections
+    # YOLO PARSING
     # --------------------------------
     for detection in predictions:
+
+        x_center = detection[0]
+        y_center = detection[1]
+
+        width = detection[2]
+        height = detection[3]
 
         confidence = float(detection[4])
 
         if confidence < CONF_THRESHOLD:
             continue
 
-        x_center = detection[0]
-        y_center = detection[1]
-        width = detection[2]
-        height = detection[3]
+        # YOLO center -> corner
+        x1 = x_center - width / 2
+        y1 = y_center - height / 2
 
-        # Convert coordinates
-        x1 = int(
-            (x_center - width / 2)
-            * original_w
-            / MODEL_SIZE
-        )
+        x2 = x_center + width / 2
+        y2 = y_center + height / 2
 
-        y1 = int(
-            (y_center - height / 2)
-            * original_h
-            / MODEL_SIZE
-        )
+        # Remove letterbox
+        x1 = (x1 - pad_x) / scale
+        y1 = (y1 - pad_y) / scale
 
-        w = int(width * original_w / MODEL_SIZE)
-        h = int(height * original_h / MODEL_SIZE)
+        x2 = (x2 - pad_x) / scale
+        y2 = (y2 - pad_y) / scale
 
-        boxes.append([x1, y1, w, h])
+        # Clip
+        x1 = max(0, min(original_w, x1))
+        y1 = max(0, min(original_h, y1))
+
+        x2 = max(0, min(original_w, x2))
+        y2 = max(0, min(original_h, y2))
+
+        w = int(x2 - x1)
+        h = int(y2 - y1)
+
+        # Ignore tiny boxes
+        if w < 20 or h < 20:
+            continue
+
+        boxes.append([
+            int(x1),
+            int(y1),
+            w,
+            h
+        ])
 
         confidences.append(confidence)
 
     # --------------------------------
-    # Apply NMS
+    # NMS
     # --------------------------------
     indices = cv2.dnn.NMSBoxes(
         boxes,
@@ -132,18 +182,16 @@ def detect_pothole(frame):
             center_x = x + w // 2
             center_y = y + h // 2
 
-            # Only lower-half potholes
-            if center_y > original_h // 2:
-
-                potholes.append(
-                    (
-                        x,
-                        y,
-                        w,
-                        h,
-                        center_x,
-                        center_y
-                    )
+            potholes.append(
+                (
+                    x,
+                    y,
+                    w,
+                    h,
+                    center_x,
+                    center_y,
+                    confidences[i]
                 )
+            )
 
     return potholes
