@@ -132,12 +132,18 @@ def capture_loop():
 
             # -------------------------
             # DB save using cached GPS
-            # -------------------------
             if detected and db_ready:
                 if current_time - last_save_time > save_interval:
-                    save_pothole_detection(frame, gps_lat, gps_lon, None)
-                    print("Saved to DB | GPS:", gps_lat, gps_lon)
-                    last_save_time = current_time
+                    if gps_lat is not None and gps_lon is not None:
+                        success, doc_id = save_pothole_detection(frame, gps_lat, gps_lon, confidence=None)
+                        if success:
+                            print(f"Saved to Atlas [{doc_id}] | GPS: {gps_lat:.6f}, {gps_lon:.6f}")
+                        else:
+                            print("Save failed — check DB logs")
+                        last_save_time = current_time
+                    else:
+                        print("GPS not ready — skipping save")
+                        last_save_time = current_time  # still reset timer to avoid spam
 
             # -------------------------
             # FPS display
