@@ -3,7 +3,7 @@ import numpy as np
 import onnxruntime as ort
 
 MODEL_SIZE = 320
-CONF_THRESHOLD = 0.3
+CONF_THRESHOLD = 0.6  # raised from 0.3 to reduce false positives
 FRAME_WIDTH = 320
 FRAME_HEIGHT = 320
 
@@ -14,20 +14,18 @@ options = ort.SessionOptions()
 options.intra_op_num_threads = 1
 options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
-session = ort.InferenceSession(
+session = ort.InferenceInstance(
     "/home/jayesh/Pothole_detection/model/best.onnx",
     sess_options=options,
     providers=["CPUExecutionProvider"]
 )
-
 input_name = session.get_inputs()[0].name
 
 
 # -------------------------------
-# Detect pothole (SINGLE OUTPUT)
+# Detect pothole
 # -------------------------------
 def detect_pothole(frame):
-
     try:
         img = cv2.resize(frame, (MODEL_SIZE, MODEL_SIZE))
         img = img.astype(np.float32) / 255.0
@@ -36,13 +34,11 @@ def detect_pothole(frame):
 
         outputs = session.run(None, {input_name: img})
         predictions = np.squeeze(outputs[0])
-        print("Max confidence:", predictions[:, 4].max())
 
         if len(predictions.shape) == 1:
             return False, 0, 0
 
         for det in predictions:
-
             if len(det) < 5:
                 continue
 
@@ -56,10 +52,17 @@ def detect_pothole(frame):
             x2 = int((x_c + w / 2) * FRAME_WIDTH / MODEL_SIZE)
             y2 = int((y_c + h / 2) * FRAME_HEIGHT / MODEL_SIZE)
 
+            # Minimum box size filter
+            box_width = x2 - x1
+            box_height = y2 - y1
+            if box_width < 30 or box_height < 30:
+                continue
+
             cx = (x1 + x2) // 2
             cy = (y1 + y2) // 2
-            print(f"cy={cy}, threshold={FRAME_HEIGHT // 2}")  # debug line
-            return True, cx, cy  # remove the cy restriction for now
+
+            print(f"Pothole: conf={conf:.2f}, cx={cx}, cy={cy}")
+            return True, cx, cy
 
         return False, 0, 0
 
