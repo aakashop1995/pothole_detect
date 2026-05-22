@@ -181,6 +181,7 @@ def generate():
             frame = None if latest_frame is None else latest_frame.copy()
 
         if frame is None:
+            time.sleep(0.1)
             continue
 
         _, buffer = cv2.imencode('.jpg', frame)
@@ -189,7 +190,7 @@ def generate():
                b'Content-Type: image/jpeg\r\n\r\n' +
                buffer.tobytes() + b'\r\n')
 
-        time.sleep(0.05)
+        time.sleep(0.033)
 
 
 # -----------------------------
