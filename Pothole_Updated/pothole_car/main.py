@@ -69,36 +69,80 @@ def capture_loop():
     lat, lon = None, None
 
     while True:
+    loop_start = time.time()
+    try:
+        print("1. capturing frame")
+        frame = picam2.capture_array()
+        
+        print("2. blurring")
+        frame = cv2.GaussianBlur(frame, (3, 3), 0)
+        
+        frame_counter += 1
+        
+        print("3. detecting")
+        if frame_counter % 2 == 0:
+            detected, cx, cy = detect_pothole(frame)
+            
+        print("4. navigation")
+        if detected:
+            command = decide_action(True, cx, cy)
+        else:
+            command = decide_action(False, 0, 0)
+            
+        print("5. send command")
+        send_command(command)
+        
+        print("6. drawing")
+        if detected:
+            cv2.circle(frame, (cx, cy), 5, (0, 0, 255), -1)
+            
+        print("7. gps/db")
+        current_time = time.time()
+        if detected:
+            if current_time - last_gps_time > gps_interval:
+                lat, lon = get_gps_location()
+                last_gps_time = current_time
+                
+        print("8. sharing frame")
+        with lock:
+            latest_frame = frame.copy()
+            
+        print("9. loop done")
+        
+    except Exception as e:
+        print("Camera Error:", e)
 
-        loop_start = time.time()
+    # while True:
 
-        try:
+    #     loop_start = time.time()
 
-            frame = picam2.capture_array()
+    #     try:
 
-            #added
-            frame = cv2.GaussianBlur(frame, (3, 3), 0)
+    #         frame = picam2.capture_array()
 
-            frame_counter += 1
+    #         #added
+    #         frame = cv2.GaussianBlur(frame, (3, 3), 0)
 
-            # -------------------------
-            # Run detection every 3 frames
-            # -------------------------
-            if frame_counter % 2 == 0:
-                detected, cx, cy = detect_pothole(frame)
-                print("Detected:", detected)
+    #         frame_counter += 1
 
-            # -------------------------
-            # Navigation
-            # -------------------------
-            if detected:
-                command = decide_action(True, cx, cy)
-            else:
-                command = decide_action(False, 0, 0)
+    #         # -------------------------
+    #         # Run detection every 3 frames
+    #         # -------------------------
+    #         if frame_counter % 2 == 0:
+    #             detected, cx, cy = detect_pothole(frame)
+    #             print("Detected:", detected)
 
-            send_command(command)
+    #         # -------------------------
+    #         # Navigation
+    #         # -------------------------
+    #         if detected:
+    #             command = decide_action(True, cx, cy)
+    #         else:
+    #             command = decide_action(False, 0, 0)
 
-            # -------------------------
+    #         send_command(command)
+
+    #         # -------------------------
             # Draw
             # -------------------------
             if detected:
