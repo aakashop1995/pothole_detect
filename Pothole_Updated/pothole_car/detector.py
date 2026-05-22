@@ -14,19 +14,37 @@ NMS_THRESHOLD = 0.4
 # LETTERBOX (prevents zoom + distortion)
 # --------------------------------
 def letterbox(img, size=320):
+
     h, w = img.shape[:2]
 
     scale = min(size / w, size / h)
-    nw, nh = int(w * scale), int(h * scale)
 
+    nw = int(w * scale)
+    nh = int(h * scale)
+
+    # Resize
     resized = cv2.resize(img, (nw, nh))
 
-    canvas = np.full((size, size, 3), 114, dtype=np.uint8)
+    # Remove alpha channel if exists
+    if resized.shape[2] == 4:
+        resized = resized[:, :, :3]
 
+    # Create canvas
+    canvas = np.full(
+        (size, size, 3),
+        114,
+        dtype=np.uint8
+    )
+
+    # Padding
     pad_x = (size - nw) // 2
     pad_y = (size - nh) // 2
 
-    canvas[pad_y:pad_y + nh, pad_x:pad_x + nw] = resized
+    # Put resized image on canvas
+    canvas[
+        pad_y:pad_y + nh,
+        pad_x:pad_x + nw
+    ] = resized
 
     return canvas, scale, pad_x, pad_y
 
