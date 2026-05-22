@@ -29,7 +29,6 @@ config = picam2.create_preview_configuration(
 
 picam2.configure(config)
 picam2.start()
-
 print("Camera started")
 
 # -----------------------------
@@ -71,7 +70,7 @@ def capture_loop():
 
     global latest_frame
 
-    target_fps = 30
+    target_fps = 15                  # realistic for Pi 4
     frame_time = 1.0 / target_fps
 
     frame_counter = 0
@@ -89,13 +88,16 @@ def capture_loop():
         loop_start = time.time()
 
         try:
+            # -------------------------
+            # Capture
+            # -------------------------
             frame = picam2.capture_array()
-            frame = cv2.GaussianBlur(frame, (3, 3), 0)
+            # blur removed
 
             frame_counter += 1
 
             # -------------------------
-            # Run detection every 2 frames
+            # Detection every 2 frames
             # -------------------------
             if frame_counter % 2 == 0:
                 detected, cx, cy = detect_pothole(frame)
@@ -103,11 +105,7 @@ def capture_loop():
             # -------------------------
             # Navigation
             # -------------------------
-            if detected:
-                command = decide_action(True, cx, cy)
-            else:
-                command = decide_action(False, 0, 0)
-
+            command = decide_action(detected, cx if detected else 0, cy if detected else 0)
             send_command(command)
 
             # -------------------------
@@ -119,26 +117,23 @@ def capture_loop():
             # -------------------------
             # State log
             # -------------------------
-            if detected:
-                print("Pothole detected")
-            else:
-                print("Clear")
+            print("Pothole detected" if detected else "Clear")
 
             # -------------------------
-            # DB save (uses cached GPS)
+            # DB save using cached GPS
             # -------------------------
             current_time = time.time()
 
-            if detected:
-                if db_ready and current_time - last_save_time > save_interval:
+            if detected and db_ready:
+                if current_time - last_save_time > save_interval:
                     save_pothole_detection(frame, gps_lat, gps_lon, None)
                     print("Saved to DB | GPS:", gps_lat, gps_lon)
                     last_save_time = current_time
 
             # -------------------------
-            # FPS
+            # FPS calculation
             # -------------------------
-            fps = 1 / (current_time - prev_time)
+            fps = 1 / (current_time - prev_time) if (current_time - prev_time) > 0 else 0
             prev_time = current_time
 
             cv2.putText(frame, f"FPS: {int(fps)}", (10, 30),
@@ -163,8 +158,9 @@ def capture_loop():
             # FPS cap
             # -------------------------
             elapsed = time.time() - loop_start
-            if elapsed < frame_time:
-                time.sleep(frame_time - elapsed)
+            sleep_time = frame_time - elapsed
+            if sleep_time > 0:
+                time.sleep(sleep_time)
 
         except Exception as e:
             print("Camera Error:", e)
@@ -214,12 +210,10 @@ def home():
     <img src="/video" width="640">
     """
 
-
 @app.route('/video')
 def video():
     return Response(generate(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
-
 
 @app.route('/stats')
 def stats():
