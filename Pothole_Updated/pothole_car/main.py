@@ -3,6 +3,7 @@ import cv2
 import time
 import threading
 import numpy as np
+
 from picamera2 import Picamera2
 
 from detector import detect_pothole
@@ -42,6 +43,26 @@ db_ready = init_database()
 latest_frame = None
 lock = threading.Lock()
 
+# -----------------------------
+# GPS background thread
+# -----------------------------
+gps_lat, gps_lon = None, None
+
+def gps_loop():
+    global gps_lat, gps_lon
+    while True:
+        try:
+            lat, lon = get_gps_location()
+            if lat and lon:
+                gps_lat, gps_lon = lat, lon
+                print("GPS updated:", gps_lat, gps_lon)
+        except Exception as e:
+            print("GPS loop error:", e)
+        time.sleep(5)
+
+threading.Thread(target=gps_loop, daemon=True).start()
+print("GPS thread started")
+
 
 # -----------------------------
 # Camera loop
@@ -55,9 +76,6 @@ def capture_loop():
 
     frame_counter = 0
 
-    last_gps_time = 0
-    gps_interval = 5
-
     last_save_time = 0
     save_interval = 10
 
@@ -66,83 +84,33 @@ def capture_loop():
     detected = False
     cx, cy = 0, 0
 
-    lat, lon = None, None
-
     while True:
+
         loop_start = time.time()
+
         try:
-            print("1. capturing frame")
             frame = picam2.capture_array()
-            
-            print("2. blurring")
             frame = cv2.GaussianBlur(frame, (3, 3), 0)
-            
+
             frame_counter += 1
-            
-            print("3. detecting")
+
+            # -------------------------
+            # Run detection every 2 frames
+            # -------------------------
             if frame_counter % 2 == 0:
                 detected, cx, cy = detect_pothole(frame)
-                
-            print("4. navigation")
+
+            # -------------------------
+            # Navigation
+            # -------------------------
             if detected:
                 command = decide_action(True, cx, cy)
             else:
                 command = decide_action(False, 0, 0)
-                
-            print("5. send command")
+
             send_command(command)
-            
-            print("6. drawing")
-            if detected:
-                cv2.circle(frame, (cx, cy), 5, (0, 0, 255), -1)
-                
-            print("7. gps/db")
-            current_time = time.time()
-            if detected:
-                if current_time - last_gps_time > gps_interval:
-                    lat, lon = get_gps_location()
-                    last_gps_time = current_time
-                    
-            print("8. sharing frame")
-            with lock:
-                latest_frame = frame.copy()
-                
-            print("9. loop done")
-            
-        except Exception as e:
-            print("Camera Error:", e)
 
-    # while True:
-
-    #     loop_start = time.time()
-
-    #     try:
-
-    #         frame = picam2.capture_array()
-
-    #         #added
-    #         frame = cv2.GaussianBlur(frame, (3, 3), 0)
-
-    #         frame_counter += 1
-
-    #         # -------------------------
-    #         # Run detection every 3 frames
-    #         # -------------------------
-    #         if frame_counter % 2 == 0:
-    #             detected, cx, cy = detect_pothole(frame)
-    #             print("Detected:", detected)
-
-    #         # -------------------------
-    #         # Navigation
-    #         # -------------------------
-    #         if detected:
-    #             command = decide_action(True, cx, cy)
-    #         else:
-    #             command = decide_action(False, 0, 0)
-
-    #         send_command(command)
-
-    #         # -------------------------
+            # -------------------------
             # Draw
             # -------------------------
             if detected:
@@ -157,20 +125,14 @@ def capture_loop():
                 print("Clear")
 
             # -------------------------
-            # GPS + DB
+            # DB save (uses cached GPS)
             # -------------------------
             current_time = time.time()
 
             if detected:
-
-                if current_time - last_gps_time > gps_interval:
-                    lat, lon = get_gps_location()
-                    print("GPS:", lat, lon)
-                    last_gps_time = current_time
-
                 if db_ready and current_time - last_save_time > save_interval:
-                    save_pothole_detection(frame, lat, lon, None)
-                    print("Saved to DB")
+                    save_pothole_detection(frame, gps_lat, gps_lon, None)
+                    print("Saved to DB | GPS:", gps_lat, gps_lon)
                     last_save_time = current_time
 
             # -------------------------
@@ -208,40 +170,44 @@ def capture_loop():
             print("Camera Error:", e)
 
 
-# Start thread
 threading.Thread(target=capture_loop, daemon=True).start()
+print("Capture thread started")
 
 
 # -----------------------------
 # Stream generator
 # -----------------------------
 def generate():
-
     global latest_frame
 
     while True:
+        try:
+            with lock:
+                frame = None if latest_frame is None else latest_frame.copy()
 
-        with lock:
-            frame = None if latest_frame is None else latest_frame.copy()
+            if frame is None:
+                time.sleep(0.1)
+                continue
 
-        if frame is None:
+            ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            if not ret:
+                continue
+
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' +
+                   buffer.tobytes() + b'\r\n')
+
+            time.sleep(0.033)
+
+        except Exception as e:
+            print("Stream error:", e)
             time.sleep(0.1)
-            continue
-
-        _, buffer = cv2.imencode('.jpg', frame)
-
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' +
-               buffer.tobytes() + b'\r\n')
-
-        time.sleep(0.033)
 
 
 # -----------------------------
 # Routes
 # -----------------------------
 @app.route('/')
-
 def home():
     return """
     <h2>Pothole Detection System</h2>
@@ -250,14 +216,12 @@ def home():
 
 
 @app.route('/video')
-
 def video():
     return Response(generate(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
 @app.route('/stats')
-
 def stats():
     return get_detection_stats()
 
@@ -266,7 +230,6 @@ def stats():
 # Run
 # -----------------------------
 if __name__ == '__main__':
-
     try:
         app.run(
             host='0.0.0.0',
@@ -275,7 +238,6 @@ if __name__ == '__main__':
             debug=False,
             use_reloader=False
         )
-
     finally:
         close_database()
         picam2.stop()
