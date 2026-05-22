@@ -15,6 +15,16 @@ NMS_THRESHOLD = 0.4
 # --------------------------------
 def letterbox(img, size=320):
 
+    # Ensure 3 channels
+    if len(img.shape) == 2:
+        img = cv2.cvtColor(
+            img,
+            cv2.COLOR_GRAY2RGB
+        )
+
+    elif img.shape[2] == 4:
+        img = img[:, :, :3]
+
     h, w = img.shape[:2]
 
     scale = min(size / w, size / h)
@@ -24,10 +34,6 @@ def letterbox(img, size=320):
 
     # Resize
     resized = cv2.resize(img, (nw, nh))
-
-    # Remove alpha channel if exists
-    if resized.shape[2] == 4:
-        resized = resized[:, :, :3]
 
     # Create canvas
     canvas = np.full(
@@ -40,7 +46,7 @@ def letterbox(img, size=320):
     pad_x = (size - nw) // 2
     pad_y = (size - nh) // 2
 
-    # Put resized image on canvas
+    # Put resized image
     canvas[
         pad_y:pad_y + nh,
         pad_x:pad_x + nw
