@@ -7,7 +7,7 @@ import onnxruntime as ort
 # --------------------------------
 MODEL_SIZE = 320
 
-CONF_THRESHOLD = 0.5
+CONF_THRESHOLD = 0.3
 NMS_THRESHOLD = 0.4
 
 # --------------------------------
