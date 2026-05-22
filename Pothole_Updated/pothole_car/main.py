@@ -76,13 +76,15 @@ def capture_loop():
     frame_counter = 0
 
     last_save_time = 0
-    save_interval = 10
+    save_interval = 5          # ← reduced from 10
 
     prev_time = time.time()
 
+    # persist last detection across frames
     detected = False
     cx, cy = 0, 0
     box = None
+    detection_count = 0        # ← count consecutive detections
 
     while True:
 
@@ -94,7 +96,6 @@ def capture_loop():
             # -------------------------
             frame = picam2.capture_array()
 
-            # ← FPS calculated from full loop delta
             current_time = time.time()
             loop_time = current_time - prev_time
             fps = min(1 / loop_time if loop_time > 0 else 0, target_fps)
@@ -103,11 +104,17 @@ def capture_loop():
             frame_counter += 1
 
             # -------------------------
-            # Reset every frame
+            # Run inference every 5th frame
+            # persists detection across non-inference frames
             # -------------------------
-            detected, cx, cy, box = False, 0, 0, None
-            if frame_counter % 2 == 0:
-                detected, cx, cy, box = detect_pothole(frame)
+            if frame_counter % 5 == 0:
+                new_detected, new_cx, new_cy, new_box = detect_pothole(frame)
+                if new_detected:
+                    detected, cx, cy, box = new_detected, new_cx, new_cy, new_box
+                    detection_count += 1
+                else:
+                    detection_count = 0
+                    detected, cx, cy, box = False, 0, 0, None
 
             # -------------------------
             # Navigation
@@ -128,11 +135,12 @@ def capture_loop():
             # -------------------------
             # State log
             # -------------------------
-            print("Pothole detected" if detected else "Clear")
+            print("Pothole detected" if detected else "Clear", "| FPS:", int(fps))
 
             # -------------------------
-            # DB save using cached GPS
-            if detected and db_ready:
+            # DB save — wait for 2 consecutive detections
+            # -------------------------
+            if detected and db_ready and detection_count >= 2:
                 if current_time - last_save_time > save_interval:
                     if gps_lat is not None and gps_lon is not None:
                         success, doc_id = save_pothole_detection(frame, gps_lat, gps_lon, confidence=None)
@@ -143,7 +151,7 @@ def capture_loop():
                         last_save_time = current_time
                     else:
                         print("GPS not ready — skipping save")
-                        last_save_time = current_time  # still reset timer to avoid spam
+                        last_save_time = current_time
 
             # -------------------------
             # FPS display
