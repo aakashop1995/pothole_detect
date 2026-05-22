@@ -94,8 +94,11 @@ def capture_loop():
             # -------------------------
             frame = picam2.capture_array()
 
-            # ← moved to top for accurate FPS
+            # ← FPS calculated from full loop delta
             current_time = time.time()
+            loop_time = current_time - prev_time
+            fps = min(1 / loop_time if loop_time > 0 else 0, target_fps)
+            prev_time = current_time
 
             frame_counter += 1
 
@@ -137,11 +140,8 @@ def capture_loop():
                     last_save_time = current_time
 
             # -------------------------
-            # FPS calculation — now accurate
+            # FPS display
             # -------------------------
-            fps = 1 / (current_time - prev_time) if (current_time - prev_time) > 0 else 0
-            prev_time = current_time
-
             cv2.putText(frame, f"FPS: {int(fps)}", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
