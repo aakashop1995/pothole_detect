@@ -79,16 +79,16 @@ def capture_loop():
             # --------------------------------
             frame = picam2.capture_array()
 
-            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            # frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
-            frame = cv2.resize(frame, (FRAME_WIDTH, FRAME_HEIGHT))
+            # frame = cv2.resize(frame, (FRAME_WIDTH, FRAME_HEIGHT))
 
             # --------------------------------
             # Detection every 3 frames
             # --------------------------------
             frame_counter += 1
 
-            if frame_counter % 3 == 0:
+            if frame_counter % 6 == 0:
                 potholes = detect_pothole(frame)
 
             detected = len(potholes) > 0
@@ -226,7 +226,7 @@ def generate():
                b'Content-Type: image/jpeg\r\n\r\n' +
                buffer.tobytes() + b'\r\n')
 
-        time.sleep(0.03)
+        time.sleep(0.08)
 
 # --------------------------------
 # Flask routes
