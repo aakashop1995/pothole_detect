@@ -3,7 +3,7 @@ import numpy as np
 import onnxruntime as ort
 
 MODEL_SIZE = 320
-CONF_THRESHOLD = 0.6  # raised from 0.3 to reduce false positives
+CONF_THRESHOLD = 0.6
 FRAME_WIDTH = 320
 FRAME_HEIGHT = 320
 
@@ -14,7 +14,7 @@ options = ort.SessionOptions()
 options.intra_op_num_threads = 1
 options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
-session = ort.InferenceInstance(
+session = ort.InferenceSession(
     "/home/jayesh/Pothole_detection/model/best.onnx",
     sess_options=options,
     providers=["CPUExecutionProvider"]
@@ -33,39 +33,66 @@ def detect_pothole(frame):
         img = np.expand_dims(img, axis=0)
 
         outputs = session.run(None, {input_name: img})
-        predictions = np.squeeze(outputs[0])
 
-        if len(predictions.shape) == 1:
-            return False, 0, 0
+        # ← KEY FIX: match laptop version
+        preds = outputs[0][0].T  # (2100, 5)
 
-        for det in predictions:
-            if len(det) < 5:
-                continue
+        boxes = []
+        scores = []
 
-            x_c, y_c, w, h, conf = det[:5]
+        for det in preds:
+            x, y, w, h, conf = det
 
             if conf < CONF_THRESHOLD:
                 continue
 
-            x1 = int((x_c - w / 2) * FRAME_WIDTH / MODEL_SIZE)
-            y1 = int((y_c - h / 2) * FRAME_HEIGHT / MODEL_SIZE)
-            x2 = int((x_c + w / 2) * FRAME_WIDTH / MODEL_SIZE)
-            y2 = int((y_c + h / 2) * FRAME_HEIGHT / MODEL_SIZE)
+            # Auto detect normalized vs pixel
+            if x <= 1.0 and y <= 1.0 and w <= 1.0 and h <= 1.0:
+                x1 = int((x - w / 2) * MODEL_SIZE)
+                y1 = int((y - h / 2) * MODEL_SIZE)
+                x2 = int((x + w / 2) * MODEL_SIZE)
+                y2 = int((y + h / 2) * MODEL_SIZE)
+            else:
+                x1 = int(x - w / 2)
+                y1 = int(y - h / 2)
+                x2 = int(x + w / 2)
+                y2 = int(y + h / 2)
 
-            # Minimum box size filter
-            box_width = x2 - x1
-            box_height = y2 - y1
-            if box_width < 30 or box_height < 30:
+            # Clamp to frame
+            x1 = max(0, x1)
+            y1 = max(0, y1)
+            x2 = min(MODEL_SIZE, x2)
+            y2 = min(MODEL_SIZE, y2)
+
+            # Skip tiny boxes
+            if x2 - x1 < 30 or y2 - y1 < 30:
                 continue
 
-            cx = (x1 + x2) // 2
-            cy = (y1 + y2) // 2
+            boxes.append([x1, y1, x2, y2])
+            scores.append(float(conf))
 
-            print(f"Pothole: conf={conf:.2f}, cx={cx}, cy={cy}")
-            return True, cx, cy
+        # NMS - remove duplicate boxes
+        if boxes:
+            indices = cv2.dnn.NMSBoxes(
+                [[x1, y1, x2 - x1, y2 - y1] for x1, y1, x2, y2 in boxes],
+                scores,
+                CONF_THRESHOLD,
+                0.4  # NMS threshold
+            )
 
-        return False, 0, 0
+            for i in indices:
+                idx = i[0] if isinstance(i, (list, np.ndarray)) else i
+                x1, y1, x2, y2 = boxes[idx]
+                conf = scores[idx]
+
+                cx = (x1 + x2) // 2
+                cy = (y1 + y2) // 2
+
+                print(f"Pothole: conf={conf:.2f}, cx={cx}, cy={cy}")
+                return True, cx, cy, (x1, y1, x2, y2)
+
+        return False, 0, 0, None
 
     except Exception as e:
         print("Detector error:", e)
-        return False, 0, 0
+        return False, 0, 0, None
