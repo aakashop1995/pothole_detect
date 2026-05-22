@@ -45,7 +45,7 @@ options.graph_optimization_level = (
 # Load ONNX model
 # --------------------------------
 session = ort.InferenceSession(
-    "/home/jayesh/Pothole_Updated/model/best.onnx",
+    "/home/jayesh/pothole_detect/Pothole_Updated/model/best.onnx",
     sess_options=options,
     providers=['CPUExecutionProvider']
 )
