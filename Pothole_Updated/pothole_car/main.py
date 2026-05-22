@@ -2,7 +2,7 @@ from flask import Flask, Response
 import cv2
 import time
 import threading
-
+import numpy as np
 from picamera2 import Picamera2
 
 from detector import detect_pothole
