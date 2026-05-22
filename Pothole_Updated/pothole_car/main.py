@@ -199,7 +199,14 @@ def capture_loop():
             print("Camera Error:", e)
 
 # Start thread
-threading.Thread(target=capture_loop, daemon=True).start()
+# threading.Thread(target=capture_loop, daemon=True).start()
+camera_thread = threading.Thread(
+    target=capture_loop
+)
+
+camera_thread.daemon = True
+
+camera_thread.start()
 
 # --------------------------------
 # MJPEG Stream
