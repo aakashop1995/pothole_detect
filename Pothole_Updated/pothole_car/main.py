@@ -107,7 +107,7 @@ def capture_loop():
             # Run inference every 5th frame
             # persists detection across non-inference frames
             # -------------------------
-            if frame_counter % 5 == 0:
+            if frame_counter % 8 == 0:
                 new_detected, new_cx, new_cy, new_box = detect_pothole(frame)
                 if new_detected:
                     detected, cx, cy, box = new_detected, new_cx, new_cy, new_box
