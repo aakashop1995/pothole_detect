@@ -86,6 +86,7 @@ def capture_loop():
             # -------------------------
             if frame_counter % 2 == 0:
                 detected, cx, cy = detect_pothole(frame)
+                print("Detected:", detected)
 
             # -------------------------
             # Navigation
