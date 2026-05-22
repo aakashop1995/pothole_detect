@@ -140,7 +140,7 @@ def capture_loop():
             # -------------------------
             # DB save — wait for 2 consecutive detections
             # -------------------------
-            if detected and db_ready and detection_count >= 2:
+            if detected and db_ready and detection_count >= 1:
                 if current_time - last_save_time > save_interval:
                     if gps_lat is not None and gps_lon is not None:
                         success, doc_id = save_pothole_detection(frame, gps_lat, gps_lon, confidence=None)
