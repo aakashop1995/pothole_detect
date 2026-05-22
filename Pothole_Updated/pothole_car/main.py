@@ -21,7 +21,11 @@ FRAME_HEIGHT = 320
 picam2 = Picamera2()
 
 config = picam2.create_preview_configuration(
-    main={"size": (FRAME_WIDTH, FRAME_HEIGHT)}
+    main={
+        "size": (FRAME_WIDTH, FRAME_HEIGHT),
+        "format": "RGB888"
+    },
+    buffer_count=4
 )
 
 picam2.configure(config)
