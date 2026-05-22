@@ -69,7 +69,7 @@ def capture_loop():
     lat, lon = None, None
 
     while True:
-    loop_start = time.time()
+        loop_start = time.time()
         try:
             print("1. capturing frame")
             frame = picam2.capture_array()
