@@ -3,7 +3,7 @@ import numpy as np
 import onnxruntime as ort
 
 MODEL_SIZE = 320
-CONF_THRESHOLD = 0.1
+CONF_THRESHOLD = 0.3
 FRAME_WIDTH = 320
 FRAME_HEIGHT = 320
 
