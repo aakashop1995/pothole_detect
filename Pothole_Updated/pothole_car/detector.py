@@ -36,6 +36,7 @@ def detect_pothole(frame):
 
         outputs = session.run(None, {input_name: img})
         predictions = np.squeeze(outputs[0])
+        print("Max confidence:", predictions[:, 4].max())
 
         if len(predictions.shape) == 1:
             return False, 0, 0
