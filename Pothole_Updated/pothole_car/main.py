@@ -86,7 +86,7 @@ def capture_loop():
             # -------------------------
             # Run detection every 3 frames
             # -------------------------
-            if frame_counter % 3 == 0:
+            if frame_counter % 2 == 0:
                 detected, cx, cy = detect_pothole(frame)
 
             # -------------------------
