@@ -15,45 +15,63 @@ NMS_THRESHOLD = 0.4
 # --------------------------------
 def letterbox(img, size=320):
 
-    # Ensure 3 channels
+    # --------------------------------
+    # HANDLE DIFFERENT CAMERA FORMATS
+    # --------------------------------
+
+    # Grayscale
     if len(img.shape) == 2:
+
         img = cv2.cvtColor(
             img,
-            cv2.COLOR_GRAY2RGB
+            cv2.COLOR_GRAY2BGR
         )
 
-    elif img.shape[2] == 4:
+    # 4 channel image
+    elif len(img.shape) == 3 and img.shape[2] == 4:
+
+        # Remove alpha channel
         img = img[:, :, :3]
 
     h, w = img.shape[:2]
 
+    # --------------------------------
+    # SCALE
+    # --------------------------------
     scale = min(size / w, size / h)
 
     nw = int(w * scale)
     nh = int(h * scale)
 
-    # Resize
+    # --------------------------------
+    # RESIZE
+    # --------------------------------
     resized = cv2.resize(img, (nw, nh))
 
-    # Create canvas
+    # --------------------------------
+    # CREATE CANVAS
+    # --------------------------------
     canvas = np.full(
         (size, size, 3),
         114,
         dtype=np.uint8
     )
 
-    # Padding
+    # --------------------------------
+    # PADDING
+    # --------------------------------
     pad_x = (size - nw) // 2
     pad_y = (size - nh) // 2
 
-    # Put resized image
+    # --------------------------------
+    # PLACE IMAGE
+    # --------------------------------
     canvas[
         pad_y:pad_y + nh,
         pad_x:pad_x + nw
     ] = resized
 
     return canvas, scale, pad_x, pad_y
-
 # --------------------------------
 # ONNX Runtime Optimization
 # --------------------------------
