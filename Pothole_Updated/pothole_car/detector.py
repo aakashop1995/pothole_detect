@@ -58,10 +58,8 @@ def detect_pothole(frame):
 
             cx = (x1 + x2) // 2
             cy = (y1 + y2) // 2
-
-            # Only lower half (road logic)
-            if cy > FRAME_HEIGHT // 2:
-                return True, cx, cy
+            print(f"cy={cy}, threshold={FRAME_HEIGHT // 2}")  # debug line
+            return True, cx, cy  # remove the cy restriction for now
 
         return False, 0, 0
 
