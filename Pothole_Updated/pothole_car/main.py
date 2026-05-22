@@ -70,7 +70,7 @@ def capture_loop():
 
     global latest_frame
 
-    target_fps = 15                  # realistic for Pi 4
+    target_fps = 15
     frame_time = 1.0 / target_fps
 
     frame_counter = 0
@@ -80,8 +80,10 @@ def capture_loop():
 
     prev_time = time.time()
 
+    # CHANGE 1 — added box = None
     detected = False
     cx, cy = 0, 0
+    box = None
 
     while True:
 
@@ -92,15 +94,15 @@ def capture_loop():
             # Capture
             # -------------------------
             frame = picam2.capture_array()
-            # blur removed
 
             frame_counter += 1
 
             # -------------------------
-            # Detection every 2 frames
+            # CHANGE 2 — reset every frame
             # -------------------------
+            detected, cx, cy, box = False, 0, 0, None
             if frame_counter % 2 == 0:
-                detected, cx, cy = detect_pothole(frame)
+                detected, cx, cy, box = detect_pothole(frame)
 
             # -------------------------
             # Navigation
@@ -109,10 +111,17 @@ def capture_loop():
             send_command(command)
 
             # -------------------------
-            # Draw
+            # CHANGE 3 — draw box + label
             # -------------------------
-            if detected:
+            if detected and box is not None:
+                x1, y1, x2, y2 = box
+                # Bounding box
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                # Center dot
                 cv2.circle(frame, (cx, cy), 5, (0, 0, 255), -1)
+                # Label
+                cv2.putText(frame, "POTHOLE", (x1, y1 - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
 
             # -------------------------
             # State log
