@@ -13,7 +13,7 @@ from database import init_database, save_pothole_detection, get_detection_stats,
 app = Flask(__name__)
 
 FRAME_WIDTH = 320
-FRAME_HEIGHT = 320
+FRAME_HEIGHT = 240
 
 # --------------------------------
 # Camera setup
