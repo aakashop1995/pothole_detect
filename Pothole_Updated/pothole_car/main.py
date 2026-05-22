@@ -76,7 +76,10 @@ def capture_loop():
 
             frame = picam2.capture_array()
 
+            #added
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            #added
+            frame = cv2.GaussianBlur(frame, (3, 3), 0)
 
             frame_counter += 1
 
