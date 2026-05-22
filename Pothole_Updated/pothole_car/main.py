@@ -80,7 +80,6 @@ def capture_loop():
 
     prev_time = time.time()
 
-    # CHANGE 1 — added box = None
     detected = False
     cx, cy = 0, 0
     box = None
@@ -95,10 +94,13 @@ def capture_loop():
             # -------------------------
             frame = picam2.capture_array()
 
+            # ← moved to top for accurate FPS
+            current_time = time.time()
+
             frame_counter += 1
 
             # -------------------------
-            # CHANGE 2 — reset every frame
+            # Reset every frame
             # -------------------------
             detected, cx, cy, box = False, 0, 0, None
             if frame_counter % 2 == 0:
@@ -111,15 +113,12 @@ def capture_loop():
             send_command(command)
 
             # -------------------------
-            # CHANGE 3 — draw box + label
+            # Draw box + label
             # -------------------------
             if detected and box is not None:
                 x1, y1, x2, y2 = box
-                # Bounding box
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
-                # Center dot
                 cv2.circle(frame, (cx, cy), 5, (0, 0, 255), -1)
-                # Label
                 cv2.putText(frame, "POTHOLE", (x1, y1 - 10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
 
@@ -131,8 +130,6 @@ def capture_loop():
             # -------------------------
             # DB save using cached GPS
             # -------------------------
-            current_time = time.time()
-
             if detected and db_ready:
                 if current_time - last_save_time > save_interval:
                     save_pothole_detection(frame, gps_lat, gps_lon, None)
@@ -140,7 +137,7 @@ def capture_loop():
                     last_save_time = current_time
 
             # -------------------------
-            # FPS calculation
+            # FPS calculation — now accurate
             # -------------------------
             fps = 1 / (current_time - prev_time) if (current_time - prev_time) > 0 else 0
             prev_time = current_time
