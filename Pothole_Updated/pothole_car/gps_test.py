@@ -1,57 +1,50 @@
 import serial
 import time
 
-PORT = "/dev/ttyAMA0"
+gps = serial.Serial("/dev/serial0", baudrate=9600, timeout=1)
 
-gps = serial.Serial(PORT, baudrate=9600, timeout=1)
-time.sleep(2)
-
-print("GPS started on", PORT)
-
-
-def convert_to_degrees(raw, is_lon=False):
-
-    if not raw or len(raw) < 6:
+def convert_to_decimal(raw_value, direction):
+    if raw_value == "":
         return None
 
-    if is_lon:
-        degrees = float(raw[:3])   # longitude = 3 digits
-        minutes = float(raw[3:])
-    else:
-        degrees = float(raw[:2])   # latitude = 2 digits
-        minutes = float(raw[2:])
+    # Latitude has 2 degree digits, longitude has 3
+    if len(raw_value) > 5:
+        if direction in ['N', 'S']:
+            degrees = int(raw_value[:2])
+            minutes = float(raw_value[2:])
+        else:
+            degrees = int(raw_value[:3])
+            minutes = float(raw_value[3:])
 
-    return degrees + (minutes / 60)
+        decimal = degrees + (minutes / 60)
 
+        if direction in ['S', 'W']:
+            decimal *= -1
 
-def get_gps_location():
+        return decimal
 
-    while True:
+    return None
 
+print("Waiting for GPS fix...")
+
+while True:
+    try:
         line = gps.readline().decode('utf-8', errors='ignore')
-        print(line)
 
-        if "$GPGGA" in line or "$GPRMC" in line:
+        if "$GPGGA" in line:
+            data = line.split(",")
 
-            parts = line.split(",")
+            if data[2] and data[4]:
 
-            try:
-                lat_raw = parts[2]
-                lat_dir = parts[3]
-                lon_raw = parts[4]
-                lon_dir = parts[5]
+                latitude = convert_to_decimal(data[2], data[3])
+                longitude = convert_to_decimal(data[4], data[5])
 
-                if lat_raw and lon_raw:
+                print(f"Latitude : {latitude}")
+                print(f"Longitude: {longitude}")
+                print("--------------------------------")
 
-                    lat = convert_to_degrees(lat_raw, is_lon=False)
-                    lon = convert_to_degrees(lon_raw, is_lon=True)
+        time.sleep(0.1)
 
-                    if lat_dir == "S":
-                        lat = -lat
-                    if lon_dir == "W":
-                        lon = -lon
-
-                    return lat, lon
-
-            except:
-                continue
+    except KeyboardInterrupt:
+        print("Stopped")
+        break
