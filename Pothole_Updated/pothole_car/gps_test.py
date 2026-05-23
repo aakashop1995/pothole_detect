@@ -13,7 +13,12 @@ gps = serial.Serial("/dev/serial0", baudrate=9600, timeout=1)
 
 latitude = None
 longitude = None
-status = "Waiting for GPS Fix"
+status = "No GPS Data"
+
+raw_gpgga = ""
+
+satellites = ""
+hdop = ""
 
 # ==========================================
 # Convert GPS Coordinates
@@ -55,6 +60,9 @@ def read_gps():
     global latitude
     global longitude
     global status
+    global raw_gpgga
+    global satellites
+    global hdop
 
     print("GPS Reader Started")
 
@@ -62,27 +70,37 @@ def read_gps():
 
         try:
 
-            line = gps.readline().decode('utf-8', errors='ignore')
+            line = gps.readline().decode('utf-8', errors='ignore').strip()
+
+            if line:
+
+                print(line)
 
             if "$GPGGA" in line:
 
+                raw_gpgga = line
+
                 data = line.split(",")
 
-                fix = data[6]
+                if len(data) > 8:
 
-                if fix != "0":
+                    fix = data[6]
+
+                    satellites = data[7]
+
+                    hdop = data[8]
 
                     latitude = convert_to_decimal(data[2], data[3])
 
                     longitude = convert_to_decimal(data[4], data[5])
 
-                    status = "GPS Fix Acquired"
+                    if fix != "0":
 
-                    print(latitude, longitude)
+                        status = "GPS Fix Acquired"
 
-                else:
+                    else:
 
-                    status = "Waiting for GPS Fix"
+                        status = "Waiting for GPS Fix"
 
             time.sleep(1)
 
@@ -99,6 +117,7 @@ def read_gps():
 def home():
 
     return f"""
+
     <html>
 
     <head>
@@ -107,24 +126,9 @@ def home():
 
         <meta http-equiv="refresh" content="2">
 
-        <style>
-
-            body {{
-
-                font-family: Arial;
-                padding: 30px;
-                background: #f5f5f5;
-            }}
-
-            h1 {{
-                color: #333;
-            }}
-
-        </style>
-
     </head>
 
-    <body>
+    <body style="font-family:Arial; padding:30px;">
 
         <h1>Live GPS Data</h1>
 
@@ -133,6 +137,14 @@ def home():
         <h3>Latitude : {latitude}</h3>
 
         <h3>Longitude: {longitude}</h3>
+
+        <h3>Satellites: {satellites}</h3>
+
+        <h3>HDOP: {hdop}</h3>
+
+        <h2>Raw GPGGA Output</h2>
+
+        <p>{raw_gpgga}</p>
 
     </body>
 
@@ -145,12 +157,10 @@ def home():
 
 if __name__ == "__main__":
 
-    # Start GPS thread
     gps_thread = threading.Thread(target=read_gps)
 
     gps_thread.daemon = True
 
     gps_thread.start()
 
-    # Start Flask server
     app.run(host="0.0.0.0", port=5000)
