@@ -9,16 +9,20 @@ app = Flask(__name__)
 # GPS Setup
 # ==========================================
 
-gps = serial.Serial("/dev/serial0", baudrate=9600, timeout=1)
+gps = serial.Serial(
+    "/dev/ttyAMA0",
+    baudrate=9600,
+    timeout=1
+)
 
 latitude = None
 longitude = None
-status = "No GPS Data"
+status = "Waiting for GPS Data"
 
 raw_gpgga = ""
 
-satellites = ""
-hdop = ""
+satellites = "0"
+hdop = "99.99"
 
 # ==========================================
 # Convert GPS Coordinates
@@ -31,11 +35,13 @@ def convert_to_decimal(raw_value, direction):
 
     try:
 
+        # Latitude
         if direction in ['N', 'S']:
 
             degrees = int(raw_value[:2])
             minutes = float(raw_value[2:])
 
+        # Longitude
         else:
 
             degrees = int(raw_value[:3])
@@ -46,7 +52,7 @@ def convert_to_decimal(raw_value, direction):
         if direction in ['S', 'W']:
             decimal *= -1
 
-        return decimal
+        return round(decimal, 6)
 
     except:
         return None
@@ -70,13 +76,17 @@ def read_gps():
 
         try:
 
-            line = gps.readline().decode('utf-8', errors='ignore').strip()
+            line = gps.readline().decode(
+                'utf-8',
+                errors='ignore'
+            ).strip()
 
             if line:
 
                 print(line)
 
-            if "$GPGGA" in line:
+            # Read only GPGGA sentence
+            if line.startswith("$GPGGA"):
 
                 raw_gpgga = line
 
@@ -87,13 +97,19 @@ def read_gps():
                     fix = data[6]
 
                     satellites = data[7]
-
                     hdop = data[8]
 
-                    latitude = convert_to_decimal(data[2], data[3])
+                    latitude = convert_to_decimal(
+                        data[2],
+                        data[3]
+                    )
 
-                    longitude = convert_to_decimal(data[4], data[5])
+                    longitude = convert_to_decimal(
+                        data[4],
+                        data[5]
+                    )
 
+                    # GPS Fix Status
                     if fix != "0":
 
                         status = "GPS Fix Acquired"
@@ -102,11 +118,13 @@ def read_gps():
 
                         status = "Waiting for GPS Fix"
 
-            time.sleep(1)
+            time.sleep(0.01)
 
         except Exception as e:
 
             print("GPS Error:", e)
+
+            time.sleep(1)
 
 # ==========================================
 # Flask Route
@@ -126,29 +144,60 @@ def home():
 
         <meta http-equiv="refresh" content="2">
 
+        <style>
+
+            body {{
+                font-family: Arial;
+                padding: 30px;
+                background: #f5f5f5;
+            }}
+
+            .card {{
+                background: white;
+                padding: 20px;
+                border-radius: 10px;
+                box-shadow: 0px 0px 10px rgba(0,0,0,0.1);
+                max-width: 700px;
+            }}
+
+            h1 {{
+                color: #333;
+            }}
+
+            p {{
+                font-size: 18px;
+            }}
+
+        </style>
+
     </head>
 
-    <body style="font-family:Arial; padding:30px;">
+    <body>
 
-        <h1>Live GPS Data</h1>
+        <div class="card">
 
-        <h2>Status: {status}</h2>
+            <h1>Live GPS Data</h1>
 
-        <h3>Latitude : {latitude}</h3>
+            <h2>Status: {status}</h2>
 
-        <h3>Longitude: {longitude}</h3>
+            <p><b>Latitude:</b> {latitude}</p>
 
-        <h3>Satellites: {satellites}</h3>
+            <p><b>Longitude:</b> {longitude}</p>
 
-        <h3>HDOP: {hdop}</h3>
+            <p><b>Satellites:</b> {satellites}</p>
 
-        <h2>Raw GPGGA Output</h2>
+            <p><b>HDOP:</b> {hdop}</p>
 
-        <p>{raw_gpgga}</p>
+            <h3>Raw GPGGA Output</h3>
+
+            <p>{raw_gpgga}</p>
+
+        </div>
 
     </body>
 
     </html>
+
     """
 
 # ==========================================
@@ -163,4 +212,8 @@ if __name__ == "__main__":
 
     gps_thread.start()
 
-    app.run(host="0.0.0.0", port=5000)
+    app.run(
+        host="0.0.0.0",
+        port=5000,
+        debug=True
+    )
