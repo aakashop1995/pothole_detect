@@ -1,22 +1,156 @@
+from flask import Flask
 import serial
+import threading
+import time
 
-ports = ["/dev/serial0", "/dev/ttyAMA0", "/dev/ttyS0"]
-baudrates = [9600, 38400, 57600, 115200]
+app = Flask(__name__)
 
-for port in ports:
-    for baud in baudrates:
+# ==========================================
+# GPS Setup
+# ==========================================
+
+gps = serial.Serial("/dev/serial0", baudrate=9600, timeout=1)
+
+latitude = None
+longitude = None
+status = "Waiting for GPS Fix"
+
+# ==========================================
+# Convert GPS Coordinates
+# ==========================================
+
+def convert_to_decimal(raw_value, direction):
+
+    if raw_value == "":
+        return None
+
+    try:
+
+        if direction in ['N', 'S']:
+
+            degrees = int(raw_value[:2])
+            minutes = float(raw_value[2:])
+
+        else:
+
+            degrees = int(raw_value[:3])
+            minutes = float(raw_value[3:])
+
+        decimal = degrees + (minutes / 60)
+
+        if direction in ['S', 'W']:
+            decimal *= -1
+
+        return decimal
+
+    except:
+        return None
+
+# ==========================================
+# GPS Reader Thread
+# ==========================================
+
+def read_gps():
+
+    global latitude
+    global longitude
+    global status
+
+    print("GPS Reader Started")
+
+    while True:
+
         try:
-            print(f"\nTesting {port} @ {baud}")
 
-            gps = serial.Serial(port, baudrate=baud, timeout=2)
+            line = gps.readline().decode('utf-8', errors='ignore')
 
-            for i in range(10):
-                line = gps.readline().decode(errors='ignore')
+            if "$GPGGA" in line:
 
-                if line:
-                    print(line.strip())
+                data = line.split(",")
 
-            gps.close()
+                fix = data[6]
+
+                if fix != "0":
+
+                    latitude = convert_to_decimal(data[2], data[3])
+
+                    longitude = convert_to_decimal(data[4], data[5])
+
+                    status = "GPS Fix Acquired"
+
+                    print(latitude, longitude)
+
+                else:
+
+                    status = "Waiting for GPS Fix"
+
+            time.sleep(1)
 
         except Exception as e:
-            print("Failed:", e)
+
+            print("GPS Error:", e)
+
+# ==========================================
+# Flask Route
+# ==========================================
+
+@app.route("/")
+
+def home():
+
+    return f"""
+    <html>
+
+    <head>
+
+        <title>GPS Tracker</title>
+
+        <meta http-equiv="refresh" content="2">
+
+        <style>
+
+            body {{
+
+                font-family: Arial;
+                padding: 30px;
+                background: #f5f5f5;
+            }}
+
+            h1 {{
+                color: #333;
+            }}
+
+        </style>
+
+    </head>
+
+    <body>
+
+        <h1>Live GPS Data</h1>
+
+        <h2>Status: {status}</h2>
+
+        <h3>Latitude : {latitude}</h3>
+
+        <h3>Longitude: {longitude}</h3>
+
+    </body>
+
+    </html>
+    """
+
+# ==========================================
+# Main
+# ==========================================
+
+if __name__ == "__main__":
+
+    # Start GPS thread
+    gps_thread = threading.Thread(target=read_gps)
+
+    gps_thread.daemon = True
+
+    gps_thread.start()
+
+    # Start Flask server
+    app.run(host="0.0.0.0", port=5000)
