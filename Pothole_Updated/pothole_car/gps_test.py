@@ -10,7 +10,7 @@ app = Flask(__name__)
 # ==========================================
 
 gps = serial.Serial(
-    "/dev/ttyAMA0",
+    "/dev/serial0",
     baudrate=9600,
     timeout=1
 )
