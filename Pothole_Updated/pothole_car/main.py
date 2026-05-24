@@ -8,7 +8,7 @@ from picamera2 import Picamera2
 
 from detector import detect_pothole
 from navigation import decide_action
-from arduino_comm import send_command
+from arduino_comm import send_command, send_ready
 from database import init_database, save_pothole_detection, get_detection_stats, close_database
 from gps import get_gps_location, start_gps_server
 
@@ -30,6 +30,8 @@ config = picam2.create_preview_configuration(
 picam2.configure(config)
 picam2.start()
 print("Camera started")
+time.sleep(2)
+send_ready() 
 
 # -----------------------------
 # Database
