@@ -36,6 +36,8 @@ print("Camera started")
 # -----------------------------
 db_ready = init_database()
 
+time.sleep(2)
+send_command("S")
 # -----------------------------
 # Shared frame
 # -----------------------------
@@ -108,6 +110,7 @@ def capture_loop():
             # persists detection across non-inference frames
             # -------------------------
             if frame_counter % 8 == 0:
+                system_ready = True
                 new_detected, new_cx, new_cy, new_box = detect_pothole(frame)
                 if new_detected:
                     detected, cx, cy, box = new_detected, new_cx, new_cy, new_box
