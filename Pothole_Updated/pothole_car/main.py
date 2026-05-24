@@ -50,7 +50,7 @@ lock = threading.Lock()
 # -----------------------------
 # GPS server thread
 # -----------------------------
-threading.Thread(target=start_gps_server, daemon=True).start()
+# threading.Thread(target=start_gps_server, daemon=True).start()
 print("GPS server started on port 5001")
 
 
