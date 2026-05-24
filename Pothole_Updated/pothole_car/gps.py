@@ -1,49 +1,46 @@
-import serial
-import time
+import socket
+from pymongo import MongoClient
+from datetime import datetime
+import json
+import sys
 
-gps = None
+sys.stdout.reconfigure(encoding='utf-8')
 
-try:
-    gps = serial.Serial("/dev/ttyS0", baudrate=9600, timeout=1)
-    time.sleep(2)
-    print("GPS connected")
-except Exception as e:
-    print("GPS not connected:", e)
+MONGO_URI = 'mongodb://jayeshvivarekar_db_user:BioJay%4004@ac-zi1njbf-shard-00-00.udi0xw1.mongodb.net:27017,ac-zi1njbf-shard-00-01.udi0xw1.mongodb.net:27017,ac-zi1njbf-shard-00-02.udi0xw1.mongodb.net:27017/?ssl=true&replicaSet=atlas-130x6s-shard-0&authSource=admin&appName=Cluster0'
 
+col = MongoClient(MONGO_URI)['pothole_detection']['detections']
 
-def get_gps_location():
-    if gps is None:
-        return None, None
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.bind(('0.0.0.0', 5001))
+server.listen(1)
+print("Waiting for GPS...")
 
-    max_attempts = 10  # give up after 10 lines
-
-    for _ in range(max_attempts):
-        try:
-            line = gps.readline().decode('utf-8', errors='ignore').strip()
-
-            if line.startswith("$GPGGA"):
-                parts = line.split(",")
-                if len(parts) > 5 and parts[2] and parts[4]:
-                    lat = convert_to_degrees(parts[2])
-                    lon = convert_to_degrees(parts[4])
-                    if parts[3] == "S":
-                        lat = -lat
-                    if parts[5] == "W":
-                        lon = -lon
-                    return lat, lon
-
-        except Exception:
-            continue
-
-    return None, None
-
-
-def convert_to_degrees(raw):
-    if len(raw) < 6:
-        return 0
+while True:
+    conn, _ = server.accept()
+    data = conn.recv(4096).decode()
     try:
-        degrees = float(raw[:2])
-        minutes = float(raw[2:])
-        return degrees + (minutes / 60)
-    except:
-        return 0
+        # extract JSON body from HTTP request
+        body = data.split('\r\n\r\n', 1)[1]
+        parsed = json.loads(body)
+
+        lat = parsed['location']['coords']['latitude']
+        lon = parsed['location']['coords']['longitude']
+        alt = parsed['location']['coords']['altitude']
+        spd = parsed['location']['coords']['speed']
+        ts  = parsed['location']['timestamp']
+
+        doc = {
+            "latitude":  lat,
+            "longitude": lon,
+            "altitude":  alt,
+            "speed":     spd,
+            "timestamp": ts,
+            "device_id": parsed.get('device_id', '')
+        }
+        col.insert_one(doc)
+        print(f"Saved → Lat: {lat}  Lon: {lon}")
+        conn.sendall(b"HTTP/1.1 200 OK\r\n\r\nOK")
+    except Exception as e:
+        print(f"Error: {e}")
+        print(f"Raw: {data}")
+    conn.close()
