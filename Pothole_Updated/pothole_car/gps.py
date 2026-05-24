@@ -28,3 +28,6 @@ def start_gps_server():
 
 def get_gps_location():
     return _latest['lat'], _latest['lon']
+
+if __name__ == '__main__':
+    start_gps_server()
