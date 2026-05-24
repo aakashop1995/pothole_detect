@@ -7,15 +7,29 @@ _latest = {"lat": None, "lon": None, "timestamp": None}
 def start_gps_server():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.settimeout(None)  # ← add this
     server.bind(('0.0.0.0', 5001))
     server.listen(5)
     print("Waiting for GPS from Traccar...")
     while True:
         try:
-            conn, _ = server.accept()  # waits for next connection
+            conn, _ = server.accept()
             data = conn.recv(4096).decode()
-            body = data.split('\r\n\r\n', 1)[1]
+
+            # skip empty connections
+            if not data:
+                conn.close()
+                continue
+
+            if '\r\n\r\n' not in data:
+                conn.close()
+                continue
+
+            body = data.split('\r\n\r\n', 1)[1].strip()
+
+            if not body:
+                conn.close()
+                continue
+
             parsed = json.loads(body)
             _latest['lat'] = parsed['location']['coords']['latitude']
             _latest['lon'] = parsed['location']['coords']['longitude']
@@ -25,10 +39,7 @@ def start_gps_server():
         except Exception as e:
             print(f"GPS error: {e}")
         finally:
-            conn.close()  # close this connection, loop back to accept next
+            conn.close()
 
 def get_gps_location():
     return _latest['lat'], _latest['lon']
-
-if __name__ == '__main__':
-    start_gps_server()
