@@ -1,26 +1,31 @@
 FRAME_WIDTH = 320
 
-system_ready = False
+system_ready = True
 
 def decide_action(detected, x, y):
 
-    global system_ready
-
-    # wait until first valid detection cycle
+    # Safety check
     if not system_ready:
         return "S"
 
+    # No pothole detected
     if not detected:
         return "F"
 
-    # LEFT SIDE
+    # Pothole on LEFT side
     if x < FRAME_WIDTH // 3:
-        return "R"
 
-    # RIGHT SIDE
+        # reverse + right
+        return "RR"
+
+    # Pothole on RIGHT side
     elif x > 2 * FRAME_WIDTH // 3:
-        return "L"
 
-    # CENTER
+        # reverse + left
+        return "RL"
+
+    # Pothole in CENTER
     else:
-        return "S"
+
+        # reverse + turn
+        return "RC"
