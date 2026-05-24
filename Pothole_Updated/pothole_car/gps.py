@@ -1,45 +1,53 @@
 import socket
-import json
-from datetime import datetime
+import pynmea2
 
-_latest = {"lat": None, "lon": None, "timestamp": None}
+# ======================================
+# UDP SETTINGS
+# ======================================
 
-def start_gps_server():
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind(('0.0.0.0', 5001))
-    server.listen(5)
-    print("Waiting for GPS from Traccar...")
-    while True:
+UDP_IP = "0.0.0.0"
+UDP_PORT = 5001
+
+# ======================================
+# CREATE SOCKET
+# ======================================
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+sock.bind((UDP_IP, UDP_PORT))
+
+print("Waiting for GPS data...")
+
+# ======================================
+# RECEIVE GPS DATA
+# ======================================
+
+while True:
+
+    # Receive UDP packet
+    data, addr = sock.recvfrom(1024)
+
+    # Decode packet
+    line = data.decode(errors='ignore').strip()
+
+    # Print raw GPS line (optional)
+    print(line)
+
+    # Parse only GGA sentences
+    if line.startswith("$GPGGA") or line.startswith("$GNGGA"):
+
         try:
-            conn, _ = server.accept()
-            data = conn.recv(4096).decode()
 
-            # skip empty connections
-            if not data:
-                conn.close()
-                continue
+            # Parse NMEA sentence
+            msg = pynmea2.parse(line)
 
-            if '\r\n\r\n' not in data:
-                conn.close()
-                continue
+            latitude = msg.latitude
+            longitude = msg.longitude
 
-            body = data.split('\r\n\r\n', 1)[1].strip()
+            print("Latitude :", latitude)
+            print("Longitude:", longitude)
+            print("-------------------")
 
-            if not body:
-                conn.close()
-                continue
-
-            parsed = json.loads(body)
-            _latest['lat'] = parsed['location']['coords']['latitude']
-            _latest['lon'] = parsed['location']['coords']['longitude']
-            _latest['timestamp'] = datetime.utcnow()
-            print(f"GPS updated: {_latest['lat']}, {_latest['lon']}")
-            conn.sendall(b"HTTP/1.1 200 OK\r\n\r\nOK")
         except Exception as e:
-            print(f"GPS error: {e}")
-        finally:
-            conn.close()
 
-def get_gps_location():
-    return _latest['lat'], _latest['lon']
+            print("Parse error:", e)
