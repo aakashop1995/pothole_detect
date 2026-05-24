@@ -1,6 +1,14 @@
 FRAME_WIDTH = 320
 
+system_ready = False
+
 def decide_action(detected, x, y):
+
+    global system_ready
+
+    # wait until first valid detection cycle
+    if not system_ready:
+        return "S"
 
     if not detected:
         return "F"
