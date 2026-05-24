@@ -10,7 +10,7 @@ from detector import detect_pothole
 from navigation import decide_action
 from arduino_comm import send_command
 from database import init_database, save_pothole_detection, get_detection_stats, close_database
-from gps import get_gps_location
+from gps import get_gps_location, start_gps_server
 
 app = Flask(__name__)
 
@@ -48,6 +48,8 @@ lock = threading.Lock()
 # GPS background thread
 # -----------------------------
 gps_lat, gps_lon = None, None
+
+threading.Thread(target=start_gps_server, daemon=True).start()
 
 def gps_loop():
     global gps_lat, gps_lon
