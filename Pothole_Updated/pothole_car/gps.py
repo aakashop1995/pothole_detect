@@ -6,9 +6,10 @@ _latest = {"lat": None, "lon": None, "timestamp": None}
 
 def start_gps_server():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # ← fixes port in use error
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.settimeout(None)  # ← add this
     server.bind(('0.0.0.0', 5001))
-    server.listen(5)  # ← allow multiple connections in queue
+    server.listen(5)
     print("Waiting for GPS from Traccar...")
     while True:
         try:
