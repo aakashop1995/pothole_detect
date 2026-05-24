@@ -2,19 +2,17 @@ import socket
 import json
 from datetime import datetime
 
-# shared GPS store
 _latest = {"lat": None, "lon": None, "timestamp": None}
 
 def start_gps_server():
-    """Run this in a background thread on Pi"""
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # ← fixes port in use error
     server.bind(('0.0.0.0', 5001))
-    server.listen(1)
+    server.listen(5)  # ← allow multiple connections in queue
     print("Waiting for GPS from Traccar...")
-
     while True:
         try:
-            conn, _ = server.accept()
+            conn, _ = server.accept()  # waits for next connection
             data = conn.recv(4096).decode()
             body = data.split('\r\n\r\n', 1)[1]
             parsed = json.loads(body)
@@ -26,7 +24,7 @@ def start_gps_server():
         except Exception as e:
             print(f"GPS error: {e}")
         finally:
-            conn.close()
+            conn.close()  # close this connection, loop back to accept next
 
 def get_gps_location():
     return _latest['lat'], _latest['lon']
