@@ -38,6 +38,7 @@ db_ready = init_database()
 
 time.sleep(2)
 send_command("S")
+
 # -----------------------------
 # Shared frame
 # -----------------------------
@@ -45,26 +46,10 @@ latest_frame = None
 lock = threading.Lock()
 
 # -----------------------------
-# GPS background thread
+# GPS server thread
 # -----------------------------
-gps_lat, gps_lon = None, None
-
 threading.Thread(target=start_gps_server, daemon=True).start()
-
-def gps_loop():
-    global gps_lat, gps_lon
-    while True:
-        try:
-            lat, lon = get_gps_location()
-            if lat and lon:
-                gps_lat, gps_lon = lat, lon
-                print("GPS updated:", gps_lat, gps_lon)
-        except Exception as e:
-            print("GPS loop error:", e)
-        time.sleep(5)
-
-threading.Thread(target=gps_loop, daemon=True).start()
-print("GPS thread started")
+print("GPS server started on port 5001")
 
 
 # -----------------------------
@@ -80,15 +65,14 @@ def capture_loop():
     frame_counter = 0
 
     last_save_time = 0
-    save_interval = 5          # ← reduced from 10
+    save_interval = 5
 
     prev_time = time.time()
 
-    # persist last detection across frames
     detected = False
     cx, cy = 0, 0
     box = None
-    detection_count = 0        # ← count consecutive detections
+    detection_count = 0
 
     while True:
 
@@ -108,11 +92,9 @@ def capture_loop():
             frame_counter += 1
 
             # -------------------------
-            # Run inference every 5th frame
-            # persists detection across non-inference frames
+            # Run inference every 8th frame
             # -------------------------
             if frame_counter % 8 == 0:
-                system_ready = True
                 new_detected, new_cx, new_cy, new_box = detect_pothole(frame)
                 if new_detected:
                     detected, cx, cy, box = new_detected, new_cx, new_cy, new_box
@@ -143,20 +125,20 @@ def capture_loop():
             print("Pothole detected" if detected else "Clear", "| FPS:", int(fps))
 
             # -------------------------
-            # DB save — wait for 2 consecutive detections
+            # DB save
             # -------------------------
             if detected and db_ready and detection_count >= 1:
                 if current_time - last_save_time > save_interval:
-                    if gps_lat is not None and gps_lon is not None:
-                        success, doc_id = save_pothole_detection(frame, gps_lat, gps_lon, confidence=None)
+                    lat, lon = get_gps_location()
+                    if lat is not None and lon is not None:
+                        success, doc_id = save_pothole_detection(frame, lat, lon, confidence=None)
                         if success:
-                            print(f"Saved to Atlas [{doc_id}] | GPS: {gps_lat:.6f}, {gps_lon:.6f}")
+                            print(f"Saved to Atlas [{doc_id}] | GPS: {lat:.6f}, {lon:.6f}")
                         else:
                             print("Save failed — check DB logs")
-                        last_save_time = current_time
                     else:
                         print("GPS not ready — skipping save")
-                        last_save_time = current_time
+                    last_save_time = current_time
 
             # -------------------------
             # FPS display
