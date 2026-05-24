@@ -1,251 +1,324 @@
 import os
-import base64
 import datetime
+
 from pymongo import MongoClient
 from pymongo.errors import ServerSelectionTimeoutError, OperationFailure
 
-# MongoDB Atlas connection string
-# Set via environment variable or replace with your actual connection string
+from bson.binary import Binary
+
+# ==========================================
+# MONGODB CONNECTION
+# ==========================================
+
 MONGODB_URI = os.getenv(
     'MONGODB_URI',
     'mongodb://jayeshvivarekar_db_user:BioJay%4004@ac-zi1njbf-shard-00-00.udi0xw1.mongodb.net:27017,ac-zi1njbf-shard-00-01.udi0xw1.mongodb.net:27017,ac-zi1njbf-shard-00-02.udi0xw1.mongodb.net:27017/?ssl=true&replicaSet=atlas-130x6s-shard-0&authSource=admin&appName=Cluster0'
-
 )
 
 DATABASE_NAME = 'pothole_detection'
 COLLECTION_NAME = 'detections'
 
-# MongoDB connection
+# ==========================================
+# GLOBALS
+# ==========================================
+
 client = None
 db = None
 collection = None
 
 
+# ==========================================
+# INITIALIZE DATABASE
+# ==========================================
+
 def init_database():
-    """
-    Initialize MongoDB connection and create database/collections if they don't exist
-    """
+
     global client, db, collection
-    
+
     try:
+
         # Connect to MongoDB Atlas
         client = MongoClient(
             MONGODB_URI,
             serverSelectionTimeoutMS=5000,
             connectTimeoutMS=10000
         )
-        
+
         # Verify connection
         client.admin.command('ping')
+
         print("✓ MongoDB connected successfully")
-        
-        # Access or create database
+
+        # Access database
         db = client[DATABASE_NAME]
-        
-        # Access or create collection
+
+        # Access collection
         collection = db[COLLECTION_NAME]
-        
-        # Create indexes for better query performance
+
+        # Create indexes
         collection.create_index('timestamp')
         collection.create_index('location')
-        
-        # Create collection metadata if empty
+
+        # Insert metadata if collection empty
         if collection.count_documents({}) == 0:
+
             collection.insert_one({
                 'type': 'metadata',
                 'created_at': datetime.datetime.utcnow(),
                 'description': 'Pothole detection records'
             })
-        
-        print(f"✓ Database '{DATABASE_NAME}' and collection '{COLLECTION_NAME}' ready")
+
+        print(f"✓ Database '{DATABASE_NAME}' ready")
+        print(f"✓ Collection '{COLLECTION_NAME}' ready")
+
         return True
-        
+
     except ServerSelectionTimeoutError:
-        print("✗ Error: Could not connect to MongoDB. Check your connection string and internet.")
-        return False
-    except OperationFailure as e:
-        print(f"✗ MongoDB Operation Error: {e}")
-        return False
-    except Exception as e:
-        print(f"✗ Unexpected error initializing database: {e}")
+
+        print("✗ MongoDB connection timeout")
         return False
 
+    except OperationFailure as e:
+
+        print(f"✗ MongoDB operation error: {e}")
+        return False
+
+    except Exception as e:
+
+        print(f"✗ Database init error: {e}")
+        return False
+
+
+# ==========================================
+# SAVE POTHOLE DETECTION
+# ==========================================
 
 def save_pothole_detection(frame, latitude, longitude, confidence=None):
-    """
-    Save pothole detection to MongoDB
-    
-    Parameters:
-    - frame: OpenCV frame (numpy array)
-    - latitude: GPS latitude coordinate
-    - longitude: GPS longitude coordinate
-    - confidence: Detection confidence score (optional)
-    
-    Returns:
-    - bool: True if saved successfully, False otherwise
-    - ObjectId: MongoDB document ID if successful, None otherwise
-    """
-    
+
     global collection
-    
+
     if collection is None:
-        print("✗ Database not initialized. Call init_database() first.")
+
+        print("✗ Database not initialized")
         return False, None
-    
+
     if latitude is None or longitude is None:
-        print("⚠ Warning: GPS coordinates are missing")
+
+        print("⚠ GPS coordinates missing")
         return False, None
-    
+
     try:
-        # Convert frame to base64 for storage
+
+        # ==================================
+        # ENCODE IMAGE AS BINARY JPEG
+        # ==================================
+
+        image_binary = None
+
         if frame is not None:
-            _, buffer = __encode_frame(frame)
-            image_base64 = base64.b64encode(buffer).decode('utf-8')
-        else:
-            image_base64 = None
-        
-        # Create document
+
+            success, buffer = __encode_frame(frame)
+
+            if success:
+                image_binary = Binary(buffer)
+
+        # ==================================
+        # CREATE DOCUMENT
+        # ==================================
+
         document = {
+
             'timestamp': datetime.datetime.utcnow(),
+
             'location': {
                 'type': 'Point',
-                'coordinates': [longitude, latitude]  # GeoJSON format: [lon, lat]
+                'coordinates': [longitude, latitude]
             },
+
             'latitude': latitude,
             'longitude': longitude,
-            'image_base64': image_base64,
+
+            # Binary image storage
+            'image_binary': image_binary,
+
             'image_size': frame.shape if frame is not None else None,
+
             'confidence': confidence
         }
-        
-        # Insert into collection
+
+        # ==================================
+        # INSERT DOCUMENT
+        # ==================================
+
         result = collection.insert_one(document)
-        
-        print(f"✓ Pothole detection saved: {result.inserted_id}")
-        print(f"  Location: ({latitude:.6f}, {longitude:.6f})")
-        
+
+        print(f"✓ Detection saved: {result.inserted_id}")
+
+        print(f"  Latitude : {latitude:.6f}")
+        print(f"  Longitude: {longitude:.6f}")
+
         return True, result.inserted_id
-        
+
     except Exception as e:
-        print(f"✗ Error saving to database: {e}")
+
+        print(f"✗ Save error: {e}")
+
         return False, None
 
 
+# ==========================================
+# ENCODE FRAME
+# ==========================================
+
 def __encode_frame(frame):
-    """Helper function to encode frame as JPEG"""
+
     import cv2
-    
+
     success, buffer = cv2.imencode(
         '.jpg',
         frame,
         [int(cv2.IMWRITE_JPEG_QUALITY), 80]
     )
-    
-    return success, buffer.tobytes() if success else (False, b'')
 
+    if success:
+
+        return True, buffer.tobytes()
+
+    return False, None
+
+
+# ==========================================
+# GET ALL DETECTIONS
+# ==========================================
 
 def get_all_detections():
-    """
-    Retrieve all pothole detections from database
-    
-    Returns:
-    - list: List of detection documents
-    """
-    
+
     global collection
-    
+
     if collection is None:
-        print("✗ Database not initialized.")
-        return []
-    
-    try:
-        detections = list(collection.find({'type': {'$ne': 'metadata'}}))
-        print(f"✓ Retrieved {len(detections)} detections")
-        return detections
-        
-    except Exception as e:
-        print(f"✗ Error retrieving detections: {e}")
+
+        print("✗ Database not initialized")
         return []
 
+    try:
+
+        detections = list(
+            collection.find({
+                'type': {'$ne': 'metadata'}
+            })
+        )
+
+        print(f"✓ Retrieved {len(detections)} detections")
+
+        return detections
+
+    except Exception as e:
+
+        print(f"✗ Retrieval error: {e}")
+
+        return []
+
+
+# ==========================================
+# GET DETECTIONS BY LOCATION
+# ==========================================
 
 def get_detections_by_location(latitude, longitude, radius_km=1):
-    """
-    Retrieve pothole detections near a specific location
-    
-    Parameters:
-    - latitude, longitude: Center point
-    - radius_km: Search radius in kilometers
-    
-    Returns:
-    - list: Detections within radius
-    """
-    
+
     global collection
-    
+
     if collection is None:
-        print("✗ Database not initialized.")
+
+        print("✗ Database not initialized")
         return []
-    
+
     try:
-        # GeoJSON query
+
         detections = list(collection.find({
+
             'location': {
+
                 '$near': {
+
                     '$geometry': {
                         'type': 'Point',
                         'coordinates': [longitude, latitude]
                     },
-                    '$maxDistance': radius_km * 1000  # Convert to meters
+
+                    '$maxDistance': radius_km * 1000
                 }
             }
         }))
-        
-        print(f"✓ Found {len(detections)} detections near location")
+
+        print(f"✓ Found {len(detections)} nearby detections")
+
         return detections
-        
+
     except Exception as e:
-        print(f"✗ Error querying by location: {e}")
+
+        print(f"✗ Location query error: {e}")
+
         return []
 
 
+# ==========================================
+# DATABASE STATS
+# ==========================================
+
 def get_detection_stats():
-    """
-    Get statistics about pothole detections
-    
-    Returns:
-    - dict: Statistics
-    """
-    
+
     global collection
-    
+
     if collection is None:
+
         return {}
-    
+
     try:
-        total = collection.count_documents({'type': {'$ne': 'metadata'}})
-        
+
+        total = collection.count_documents({
+            'type': {'$ne': 'metadata'}
+        })
+
         stats = {
+
             'total_detections': total,
+
             'last_updated': datetime.datetime.utcnow()
         }
-        
+
         return stats
-        
+
     except Exception as e:
-        print(f"✗ Error getting statistics: {e}")
+
+        print(f"✗ Stats error: {e}")
+
         return {}
 
 
+# ==========================================
+# CLOSE DATABASE
+# ==========================================
+
 def close_database():
-    """Close MongoDB connection"""
+
     global client
-    
+
     if client is not None:
+
         try:
+
             client.close()
+
             print("✓ MongoDB connection closed")
+
         except Exception as e:
-            print(f"✗ Error closing database: {e}")
+
+            print(f"✗ Close DB error: {e}")
+
+
+# ==========================================
+# TEST
+# ==========================================
 
 if __name__ == "__main__":
 
